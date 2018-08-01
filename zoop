@@ -1,0 +1,95 @@
+import copy
+N = 12; #Number of dimensions, or consecutive calls to Random
+c = 10 #Chance of a successful call to Random. Should be interpreted as "one in c chance"
+seed = 1; #Starting seed for P, can be chosen arbitrarily however has potential to reduce # of potential points found
+
+def lcg(seed): #Copy of Java's java.Random LCG
+    return (seed*25214903917+11) % 2**48
+
+def getCeils(list): #takes a list of numbers and returns a new list of their ceilings
+    newlist = []
+    for x in range(0,len(list)):
+        newlist.append(RR(list[x]).ceil())
+    return newlist
+
+def getFloors(list): #takes a list of numbers and returns a new list of their floors
+    newlist = []
+    for x in range(0,len(list)):
+        newlist.append(RR(list[x]).floor())
+    return newlist
+
+def isInRegion(point): #checks if a point is within the region we are checking
+    for x in range(0,len(point)):
+        if point[x] > 2**48/c or point[x] < 0:
+            return false
+    return true
+
+def addOneToIndex(temp, min1, max1, index): #This and iterate both quite inefficient. Adds one to specified index, and if the specified index exceeds max[index] it sets that index back to min[index] and calls itself on the next index. Essentially addition by one in some weird af base where each digit can hold an arbitrary number of symbols.
+    temp[index]+=1
+    if temp[index] > max1[index]:
+        temp[index] = min1[index]
+        index+=1
+        if index < N:
+            temp = addOneToIndex(temp, min1, max1, index)
+    return temp
+
+
+list = []
+for i in range(0,N): #fill the list with consecutive calls to the lcg
+    list.append(seed)
+    seed = lcg(seed)
+P = vector(list) #P is now an arbitrary lattice point
+
+print "Original Basis"
+
+a = matrix(ZZ,N,N) #Initializes an NxN matrix over the Integers
+for i in range(0,N): #We want the rows of a to be a valid basis of the Java Random lattice in N dimensions.
+    a[i,i] = 2**48 #Because of the mod 2^48 in the LCG our lattice needs to repeat every 2^48 sided hypercube. Note that the 1 at a[0,0] is sufficient to guarantee this for that component
+    a[0,i] = (25214903917**i) % 2**48 #adding 1 to the seed increases all subsequent calls by a predictable amount
+a
+print
+print "LLL Reduced Basis"
+
+aLLL = a.LLL(.999,.5) #.999 chosen as a fast enough parameter which gave workable results. I'll admit, I chose .5 because thats what the wikipedia article chose.
+aLLL
+print
+print "Inverse of LLL Reduced Basis"
+
+aLLLinv = aLLL.inverse() #We need the inverse matrix in order to move the region we are interested in to Z^N
+aLLLinv
+print
+
+list = [0]*N
+min = [2**48]*N #min should never ever ever exceed this and if it does you are doing something really fucky or dealing with way more dimensions than God ever intended
+max = [-(2**48)]*N #same here
+for x in range(0,2**N): #Creates the corners of the region we are interested in, then uses aLLLinv and P to translate them to Z^N. Runs in exponential time. It is likely possible to get weaker bounds in polynomial time by using a sphere instead, or perhaps being undumb, however whether that would be worth the extra matrix multiplications required later is something I am unsure of.
+    for i in range(0,N): #Creates vector representing a unique corner of region I am interested in based on the binary representation of x
+        if (x%2 == 0):
+            x/=2
+            list[i] = 2**48/c
+        else:
+            list[i] = 0
+    corner = vector(list)
+    vec = (corner-P)*aLLLinv #Very important we multiply in this order cuz matrix shit fuck explain tomorrow Matthew. Transforms the corners first to a linear transformation of Z^N by moving P to the origin and every other point accordingly, and then to Z^N using the inverse of aLLL. The corners now are the corners of an N-dimensional parallelepiped, and all points of Z^N within this parallelepiped can be converted to our desired answer by doing the inverse of this line to them.
+    for i in range(0,N): #We need to find and store the max and min values each component of the vector can possibly be
+        if vec[i]<min[i] :
+            min[i] = vec[i]
+        if vec[i]>max[i] :
+            max[i] = vec[i]
+min
+max
+print
+getCeils(min) 
+getFloors(max)
+print
+
+def iterate(mins, maxes, A,P): #Iterates through all points of Z^N with minimum corner mins and maximum corner max. No attempts at optimization made at all here, so vast majority of checks are currently unnecessary. It also never checks either mins or maxes which is really dumb design. I could literally add that right now instead of typing this shit comment but fuck it its a fringe case anyway
+    temp = copy.deepcopy(mins) #guess how long it took me to realize "temp = mins" wouldn't work
+    while temp != maxes:
+        temp = addOneToIndex(temp, mins, maxes, 0) #proceeds to next point in Z^N
+        v = vector(temp)
+        if isInRegion(v*A+P): #moves points of Z^N back to our initial lattice. If it is within the region we are done.
+            print "real shit"
+            print (v*A+P)
+
+iterate(getCeils(min),getFloors(max),aLLL,P) #we only care about points in Z^N so the ceilings of min and floors of max are all that is required
